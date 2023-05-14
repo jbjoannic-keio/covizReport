@@ -5,6 +5,7 @@
 #include "opencv2/opencv.hpp"
 #include "Eigen/Core"
 
+// Same notation as in the course, the final interger is the number of "+" in the neighbourhood
 enum PatternType
 {
     PATTERN0,
@@ -15,14 +16,16 @@ enum PatternType
     PATTERN4
 };
 
+// Results of the asymptotic decider diven the sign of the determinant
 enum Pattern2dType
 {
-    PATTERN2DP,
-    PATTERN2DM,
-    PATTERN2DE,
+    PATTERN2DP, // Positive
+    PATTERN2DM, // Negative
+    PATTERN2DE, // Equal to zero
 
 };
 
+// Find the pattern type of a 2D configuration given the values of the neighbourhood by computing the determinant D
 Pattern2dType findPattern2dType(Eigen::Array<float, 1, 4> values, float alpha)
 {
     float c0 = values(3) + values(1) - values(0) - values(2);
@@ -45,31 +48,43 @@ Pattern2dType findPattern2dType(Eigen::Array<float, 1, 4> values, float alpha)
     }
 }
 
+// Find the pattern of a 2D scalar field and provides some methods to draw it
 class Pattern
 {
 public:
+    // Constuctor for Eigen array initilaisation
     Pattern()
     {
         pattern = PATTERN0;
         pattern2d = PATTERN2DE;
         patternNumber = 0;
     }
+
+    // Constructor for a given configuration
+    // c: corners from the mask matrix
+    // v: values from the scalar field
+    // a: alpha
     Pattern(Eigen::Array<bool, 1, 4> c, Eigen::Array<float, 1, 4> v, float a)
     {
         values = v;
         corners = c;
         alpha = a;
+
         int count = corners.count();
+
         switch (count)
         {
         case 0:
             pattern = PATTERN0;
-            pattern2d = PATTERN2DE;
-            patternNumber = 0;
+            pattern2d = PATTERN2DE; // default, not used later
+            patternNumber = 0;      // one configuration is possible
             break;
+
         case 1:
             pattern = PATTERN1;
-            pattern2d = PATTERN2DE;
+            pattern2d = PATTERN2DE; // default, not used later
+
+            // Find the index of the corner, since the corners are clockwise ordered, the index is the pattern number
             for (int i = 0; i < 4; i++)
             {
                 if (corners(i))
@@ -78,12 +93,16 @@ public:
                     break;
                 }
             }
+
             points.push_back(cv::Point2d(25, 0)); // top
             points.push_back(cv::Point2d(0, 25)); // left
             break;
+
         case 3:
             pattern = PATTERN3;
-            pattern2d = PATTERN2DE;
+            pattern2d = PATTERN2DE; // default, not used later
+
+            // Find the index of the corner, since the corners are clockwise ordered, the index is the pattern number (same as PATTERN1)
             for (int i = 0; i < 4; i++)
             {
                 if (!corners(i))
@@ -92,24 +111,28 @@ public:
                     break;
                 }
             }
+
             points.push_back(cv::Point2d(25, 0)); // bottom
             points.push_back(cv::Point2d(0, 25)); // left
             break;
+
         case 4:
             pattern = PATTERN4;
-            pattern2d = PATTERN2DE;
-            patternNumber = 0;
+            pattern2d = PATTERN2DE; // default, not used later
+            patternNumber = 0;      // one configuration is possible
             break;
+
         case 2:
             for (int i = 0; i < 4; i++)
             {
-                int next = (i + 1) % 4;
-                int prec = (i + 3) % 4;
+                int next = (i + 1) % 4; // next corner (clockwise)
+                int prec = (i + 3) % 4; // previous corner (clockwise)
+
                 if (corners(i) && corners(next))
                 {
                     pattern = PATTERN2S;
-                    pattern2d = PATTERN2DP;
-                    patternNumber = i;
+                    pattern2d = PATTERN2DP;                // default, not used later
+                    patternNumber = i;                     // four configuration possible, the index is the pattern number (the first + followed by another +)
                     points.push_back(cv::Point2d(0, 25));  // left
                     points.push_back(cv::Point2d(50, 25)); // right
                     break;
@@ -118,7 +141,8 @@ public:
                 {
                     pattern = PATTERN2D;
                     pattern2d = findPattern2dType(values, alpha);
-                    patternNumber = i;
+                    patternNumber = i; // two configuration possible in theory, but four here because of the symmetry, it does not affect the result
+
                     if (pattern2d = PATTERN2DP)
                     {
                         points.push_back(cv::Point2d(25, 0));  // top
@@ -147,16 +171,19 @@ public:
         };
     }
 
+public:
     PatternType pattern;
     Pattern2dType pattern2d;
-    int patternNumber; // 0-3
+    int patternNumber; // pattern rotation (possible configuration for each pattern)
 
-    Eigen::Array<bool, 1, 4> corners;
-    Eigen::Array<float, 1, 4> values;
+    // Neighbourhood
+    Eigen::Array<bool, 1, 4> corners; // corners from the mask matrix
+    Eigen::Array<float, 1, 4> values; // values from the scalar field
     float alpha;
 
-    std::vector<cv::Point2d> points;
+    std::vector<cv::Point2d> points; // points to draw the pattern, the points are the coordinates as if the pattern was not rotated (in its default configuration)
 
+    // Draw the pattern, just create an square image and draw the lines, and rotate given the configuration
     cv::Mat draw()
     {
         cv::Mat img = cv::Mat::zeros(50, 50, CV_8U);
@@ -179,6 +206,7 @@ public:
             break;
         }
 
+        // Draw the corners so that it is easier to see the pattern
         cv::circle(img, cv::Point2d(0, 0), 2, cv::Scalar(255), -1);
         cv::circle(img, cv::Point2d(50, 50), 2, cv::Scalar(255), -1);
         cv::circle(img, cv::Point2d(50, 0), 2, cv::Scalar(255), -1);
@@ -187,17 +215,21 @@ public:
         return img;
     }
 
+    // Interpolate the pattern, given the alpha value and the values of the scalar field.
+    // The points are the coordinates as if the pattern was not rotated (in its default configuration)
     void linearInterpolation()
     {
-        int prec = (patternNumber + 3) % 4;
-        int next = (patternNumber + 1) % 4;
-        int opp = (patternNumber + 2) % 4;
+        int prec = (patternNumber + 3) % 4; // previous corner (clockwise)
+        int next = (patternNumber + 1) % 4; // next corner (clockwise)
+        int opp = (patternNumber + 2) % 4;  // opposite corner
+
         switch (pattern)
         {
         case PATTERN1:
             points[0] = cv::Point2d(50 * (alpha - values(patternNumber)) / (values(next) - values(patternNumber)), 0); // top
             points[1] = cv::Point2d(0, 50 * (alpha - values(patternNumber)) / (values(prec) - values(patternNumber))); // left
             break;
+
         case PATTERN2S:
             if (patternNumber == 0 || patternNumber == 2)
             {
@@ -210,6 +242,7 @@ public:
                 points[1] = cv::Point2d(50 * (alpha - values(prec)) / (values(opp) - values(prec)), 50);                   // bottom
             }
             break;
+
         case PATTERN2D:
             if (pattern2d == PATTERN2DP)
             {
@@ -234,6 +267,7 @@ public:
                 points[3] = cv::Point2d(50 * (alpha - values(prec)) / (values(opp) - values(prec)), 50);                   // bottom
             }
             break;
+
         case PATTERN3:
             points[0] = cv::Point2d(50 * (alpha - values(patternNumber)) / (values(next) - values(patternNumber)), 0); // top
             points[1] = cv::Point2d(0, 50 * (alpha - values(patternNumber)) / (values(prec) - values(patternNumber))); // left
@@ -241,57 +275,55 @@ public:
         };
     }
 
+    // Method to print the pattern for debugging purposes
     std::string toString()
     {
         std::string str = "";
         switch (pattern)
         {
         case PATTERN0:
-            str += "PATTERN0";
+            str += "Pattern Number  = 0";
             break;
         case PATTERN1:
-            str += "PATTERN1";
+            str += "Pattern Number  = 1";
             break;
         case PATTERN2S:
-            str += "PATTERN2S";
+            str += "Pattern Number  = 2S";
             break;
         case PATTERN2D:
-            str += "PATTERN2D";
+            str += "Pattern Number  = 2D";
             break;
         case PATTERN3:
-            str += "PATTERN3";
+            str += "Pattern Number  = 3";
             break;
         case PATTERN4:
-            str += "PATTERN4";
+            str += "Pattern Number  = 4";
             break;
         }
 
         str += " ";
 
-        switch (pattern2d)
+        if (pattern == PATTERN2D)
         {
-        case PATTERN2DP:
-            str += "PATTERN2DP";
-            break;
-        case PATTERN2DM:
-            str += "PATTERN2DM";
-            break;
-        case PATTERN2DE:
-            str += "PATTERN2DE";
-            break;
-        }
 
-        str += " ";
+            switch (pattern2d)
+            {
+            case PATTERN2DP:
+                str += "D>0";
+                break;
+            case PATTERN2DM:
+                str += "D<0";
+                break;
+            case PATTERN2DE:
+                str += "D=0";
+                break;
+            }
+        }
+        str += " Configuration = ";
 
         str += std::to_string(patternNumber);
 
         str += "\n";
-
-        for (auto &point : points)
-        {
-            str += "(" + std::to_string(point.x) + ", " + std::to_string(point.y) + ") ";
-        }
-
         return str;
     }
 };
@@ -311,8 +343,10 @@ int main(int, char **)
     Eigen::Array<bool, 4, 4> mask;
     Eigen::Array<Pattern, 3, 3> patterns;
 
+    // Create the mask of boolean values
     mask = grid > alpha;
 
+    // Create the patterns for each square between points of the scalar field
     for (int i = 0; i < 3; i++)
     {
         for (int j = 0; j < 3; j++)
@@ -331,6 +365,7 @@ int main(int, char **)
 
     std::cout << mask << std::endl;
 
+    // Print the patterns
     for (int i = 0; i < 3; i++)
     {
         std::cout << std::endl;
@@ -343,6 +378,7 @@ int main(int, char **)
         }
     }
 
+    // Fuse the images of each pattern into one
     cv::Mat entireImage = cv::Mat::zeros(150, 150, CV_8U);
     for (int i = 0; i < patterns.rows(); i++)
     {
@@ -353,6 +389,7 @@ int main(int, char **)
         }
     }
 
+    // Interpolation on each pattern
     for (int i = 0; i < patterns.rows(); i++)
     {
         for (int j = 0; j < patterns.cols(); j++)
@@ -361,6 +398,7 @@ int main(int, char **)
         }
     }
 
+    // Fuse the images of each pattern into one
     cv::Mat entireImageInterp = cv::Mat::zeros(150, 150, CV_8U);
     for (int i = 0; i < patterns.rows(); i++)
     {
