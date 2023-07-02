@@ -10,3 +10,7 @@
 - the notebook can be found [here](./exec/rep8.ipynb)
 - the input data dile must be changed [here](exec/rep8.ipynb)
 - it computes the PCP and scatter plot matrix for this dataset
+## Report 11 - Info-Viz - 29/06
+- the notebook can be found [here](./exec/rep11.ipynb)
+- the python programm (for interaction) can be found [here](./exec/rep11.py)
+- create an interactive node graph for a particular dataframe
